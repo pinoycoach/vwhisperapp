@@ -6,30 +6,37 @@ const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SE
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!);
 
 export default async function handler(req, res) {
-  // Security headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   try {
-    const { action, input, mode, includeVerse, message } = req.body;
+    const { prompt, mode, includeScripture } = req.body;
     const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
-    if (action === 'draft') {
-      const prompt = `Return ONLY JSON: { "message": "2 sentences", "quote": "1 quote", "imagePrompt": "desc", "score": { "resonance": 95, "alchemy": 92, "harmony": 98, "overall": 95 } } for input: ${input}`;
-      const result = await model.generateContent(prompt);
-      const cleanJson = JSON.parse(result.response.text().replace(/```json|```/g, ''));
+    // 1. THE PERSONA ENGINE
+    let instructions = "You are a comforting presence. ";
+    if (mode === 'spirit') instructions += "Speak as a timeless voice of ancient wisdom. Use biblical archetypes of peace.";
+    if (mode === 'lover') instructions += "Speak as an intimate, caring partner in a quiet room. You cherish the listener.";
+    if (mode === 'mentor') instructions += "Speak as a Stoic guide. Provide strength and clarity.";
 
-      // Save to Supabase
-      const { data } = await supabase.from('gifts').insert([{ message: cleanJson.message, is_paid: false }]).select().single();
-      return res.status(200).json({ success: true, content: cleanJson, giftId: data.id });
-    }
+    const aiPrompt = `${instructions} User needs: "${prompt}". ${includeScripture ? 'Include a relevant Bible verse.' : ''} 
+    Return ONLY JSON: { "message": "2 sentences", "quote": "1 short quote", "resonance": 98, "alchemy": 95, "harmony": 97 }`;
 
-    if (action === 'finalize') {
-      // Logic for voice generation goes here
-      return res.status(200).json({ success: true, audioBase64: "..." });
-    }
+    const result = await model.generateContent(aiPrompt);
+    const cleanJson = JSON.parse(result.response.text().replace(/```json|```/g, ''));
+
+    // 2. SAVE TO SUPABASE
+    const { data } = await supabase.from('gifts').insert([{
+      message: cleanJson.message,
+      quote: cleanJson.quote,
+      mode: mode,
+      is_paid: false
+    }]).select().single();
+
+    // 3. SUCCESS
+    return res.status(200).json({ success: true, content: cleanJson, whisperId: data.id });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
   }
