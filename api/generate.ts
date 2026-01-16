@@ -1,46 +1,43 @@
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-export default async function handler(req: any, res: any) {
-  // 1. Setup Security Headers
+export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end();
 
   try {
-    // 2. Check if Vercel can see your keys
-    const config = {
-      hasGoogleKey: !!process.env.GOOGLE_API_KEY,
-      hasSupaUrl: !!process.env.SUPABASE_URL,
-      hasSupaKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
-    };
-
-    // 3. Initialize the AI with the correct library name
-    const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || '');
+    // 1. Initialize Clients
+    const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+    const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!);
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-    // 4. A simple test to see if the AI responds
-    const result = await model.generateContent("Say the word 'Online'");
+    const { prompt, mode, includeScripture } = req.body;
+
+    // 2. Generate Content
+    const systemPrompt = `You are NEXUS-7. Create a Sanctuary Whisper for: ${prompt}. Mode: ${mode}. Scripture: ${includeScripture}. Return ONLY JSON: { "message": "...", "quote": "..." }`;
+    const result = await model.generateContent(systemPrompt);
     const responseText = result.response.text();
+    const cleanJson = JSON.parse(responseText.replace(/```json|```/g, '').trim());
 
-    // 5. Return a success message we can see in the browser
-    return res.status(200).json({
-      success: true,
-      status: "The Engine is Running",
-      keysDetected: config,
-      aiResponse: responseText
-    });
+    // 3. Save to Supabase
+    const { data, error } = await supabase
+      .from('whispers')
+      .insert([{
+        text_content: cleanJson.message,
+        mode: mode,
+        is_unlocked: false
+      }])
+      .select().single();
 
-  } catch (error: any) {
-    // If it crashes, send the reason to the browser instead of a generic 500
-    return res.status(200).json({
-      success: false,
-      error: "CRASH_REPORT",
-      message: error.message
-    });
+    if (error) throw new Error(`Database Error: ${error.message}`);
+
+    return res.status(200).json({ success: true, content: cleanJson, whisperId: data.id });
+
+  } catch (error) {
+    console.error("CRASH_LOG:", error.message);
+    return res.status(500).json({ success: false, error: error.message });
   }
 }
