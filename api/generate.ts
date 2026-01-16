@@ -10,7 +10,7 @@ export default async function handler(req: any, res: any) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   try {
-    const { action, input, mode, includeVerse, message } = req.body;
+    const { action, input, mode, includeVerse } = req.body;
 
     // 2. Initialize Clients
     const supabase = createClient(
@@ -19,9 +19,10 @@ export default async function handler(req: any, res: any) {
     );
     
     const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || '');
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    
+    // --- CRITICAL UPDATE: USING GEMINI 3 FLASH PREVIEW ---
+    const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
 
-    // --- ACTION: DRAFT (Matches your App.tsx handleDraft) ---
     if (action === 'draft') {
       const prompt = `You are NEXUS-7. Create a Sanctuary Whisper for: ${input}. Mode: ${mode}. Scripture: ${includeVerse}. Return ONLY JSON: { "message": "...", "quote": "...", "imagePrompt": "cinematic description", "score": { "resonance": 95, "alchemy": 92, "harmony": 98, "overall": 95 } }`;
       
@@ -29,7 +30,6 @@ export default async function handler(req: any, res: any) {
       const responseText = result.response.text();
       const cleanJson = JSON.parse(responseText.replace(/```json|```/g, '').trim());
 
-      // Save to your 'gifts' table
       const { data, error } = await supabase
         .from('gifts')
         .insert([{
@@ -44,9 +44,7 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json({ success: true, content: cleanJson, giftId: data.id });
     }
 
-    // --- ACTION: FINALIZE (Matches your App.tsx handleFinalize) ---
     if (action === 'finalize') {
-      // Return a dummy audio for the test to ensure it doesn't crash
       return res.status(200).json({ success: true, audioBase64: "UklGRigAAAFXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=" });
     }
 
