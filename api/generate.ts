@@ -13,6 +13,7 @@ export default async function handler(req: any, res: any) {
     const { action, input, mode, includeVerse } = req.body;
 
     // 2. Initialize Clients
+    // These names match your Vercel Environment Variables
     const supabase = createClient(
       process.env.SUPABASE_URL || '', 
       process.env.SUPABASE_SERVICE_ROLE_KEY || ''
@@ -20,16 +21,18 @@ export default async function handler(req: any, res: any) {
     
     const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || '');
     
-    // --- CRITICAL UPDATE: USING GEMINI 3 FLASH PREVIEW ---
-    const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+    // Using the 2.0 Flash model for speed and reliability
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
+    // --- ACTION: DRAFT ---
     if (action === 'draft') {
-      const prompt = `You are NEXUS-7. Create a Sanctuary Whisper for: ${input}. Mode: ${mode}. Scripture: ${includeVerse}. Return ONLY JSON: { "message": "...", "quote": "...", "imagePrompt": "cinematic description", "score": { "resonance": 95, "alchemy": 92, "harmony": 98, "overall": 95 } }`;
+      const prompt = `You are NEXUS-7. Create a Sanctuary Whisper for: ${input}. Mode: ${mode}. Scripture: ${includeVerse}. Return ONLY JSON: { "message": "...", "quote": "...", "score": { "resonance": 95, "alchemy": 92, "harmony": 98, "overall": 95 } }`;
       
       const result = await model.generateContent(prompt);
       const responseText = result.response.text();
       const cleanJson = JSON.parse(responseText.replace(/```json|```/g, '').trim());
 
+      // Save to your 'gifts' table
       const { data, error } = await supabase
         .from('gifts')
         .insert([{
@@ -44,7 +47,9 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json({ success: true, content: cleanJson, giftId: data.id });
     }
 
+    // --- ACTION: FINALIZE ---
     if (action === 'finalize') {
+      // Return a dummy audio for the test to ensure the UI works
       return res.status(200).json({ success: true, audioBase64: "UklGRigAAAFXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=" });
     }
 
